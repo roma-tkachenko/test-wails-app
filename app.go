@@ -27,6 +27,8 @@ func (a *App) startup(ctx context.Context) {
 
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
+	a.authStatus = false
+	runtime.EventsEmit(a.ctx, "authStatus", a.authStatus)
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
@@ -34,6 +36,7 @@ func (a *App) Greet(name string) string {
 func (a *App) Authenticate(username string, password string) string {
 	message := fmt.Sprintf("Hello %s, you enter password: %s.", username, password)
 	fmt.Printf(message)
+	a.authStatus = true
 	runtime.EventsEmit(a.ctx, "authStatus", a.authStatus)
 	return message
 }
