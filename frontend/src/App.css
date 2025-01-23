@@ -1,4 +1,9 @@
 @import url(https://fonts.googleapis.com/css?family=Open+Sans);
+
+* {
+    margin: 0;
+}
+
 .btn {
     display: inline-block;
     *display: inline;
@@ -208,6 +213,67 @@ ul li a:hover {
 ul li a:hover::after {
     transform: scaleX(1);
     transform-origin: left;
+}
+
+/*.cards-grid {*/
+/*    !*display: grid;*!*/
+/*    !*grid-auto-flow: dense;*!*/
+/*    !*gap: 1rem;*!*/
+/*    !*grid-template-columns: repeat(auto-fit, minmax(min(100%, 288px), 1fr));*!*/
+
+/*    display: grid;*/
+/*    grid-auto-flow: dense;*/
+/*    gap: 1rem;*/
+/*    grid-template-columns: repeat(auto-fit, minmax(min(100%, 288px), 1fr));*/
+/*    grid-auto-rows: 400px auto auto;*/
+/*    !*container-type: inline-size;*!*/
+/*}*/
+
+/*.card {*/
+/*    --_padding: 1rem;*/
+/*    grid-row: span 3;*/
+/*    display: grid;*/
+/*    grid-template-rows: subgrid;*/
+/*    gap: 1rem;*/
+/*    border-radius: 0.5rem;*/
+/*    overflow: hidden;*/
+/*}*/
+
+/*img {*/
+/*    max-width: 100%;*/
+/*    display: block;*/
+/*}*/
+
+/*.card > img {*/
+/*    width: 100%;*/
+/*    height: 120px;*/
+/*    object-fit: cover;*/
+/*}*/
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Гнучкі колонки */
+    gap: 1rem; /* Відстань між елементами флекс-контейнера - 1rem (≈16px) */
+    justify-content: center; /* Центруємо карти */
+}
+
+.card {
+    max-width: 288px; /* Максимальна ширина карти */
+    width: 100%; /* Заповнює доступний простір у межах обмежень гріда */
+    aspect-ratio: 2 / 3; /* Зберігаємо пропорцію 2:3 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden; /* Ховаємо все, що виходить за межі */
+    border-radius: 15px;
+}
+
+.card img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto; /* Пропорційне масштабування */
+    height: auto;
+    object-fit: contain; /* Запобігаємо обрізанню зображень */
 }
 
 

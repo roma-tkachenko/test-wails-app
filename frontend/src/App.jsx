@@ -1,100 +1,101 @@
 import {useState, useEffect} from 'react';
 import './App.css';
-import { Login, ClaimReward, BoostClub } from "../wailsjs/go/main/App";
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { useAuthContext } from './providers/Auth'
+import Authorization from './components/Authorization'
+import RewardCards from './components/RewardCards'
+import AllCards from "./components/AllCards";
+import Club from "./components/Club";
 
 function App() {
+    const { authStatus, login } = useAuthContext();
 
-    const [resultText, setResultText] = useState("Please enter your name below 👇");
-    const [name, setName] = useState('');
-    const updateName = (e) => setName(e.target.value);
-    const updateResultText = (result) => setResultText(result);
+
+    // const [resultText, setResultText] = useState("Please enter your name below 👇");
+    // const [name, setName] = useState('');
+    // const updateName = (e) => setName(e.target.value);
+    // const updateResultText = (result) => setResultText(result);
 
     // function greet() {
     //     Greet(name).then(updateResultText);
     // }
 
     // Authorization logic
-    const [resultLoginText, setLoginText] = useState("Please enter your credentials below 👇");
-    const updateLoginText = (result) => setLoginText(result);
+    // const [resultLoginText, setLoginText] = useState("Please enter your credentials below 👇");
+    // const updateLoginText = (result) => setLoginText(result);
 
-    const [username, setUserName] = useState('');
-    const [password, setPassword] = useState('');
-    const updateUserName = (e) => setUserName(e.target.value);
-    const updatePassword = (e) => setPassword(e.target.value);
+    // const [username, setUserName] = useState('');
+    // const [password, setPassword] = useState('');
+    // const updateUserName = (e) => setUserName(e.target.value);
+    // const updatePassword = (e) => setPassword(e.target.value);
+    //
+    // // const [authStatus, setAuthStatus] = useState(false);
+    // // const authEventCallback = params => {setAuthStatus(params)}
+    //
+    // function handleLogin() {
+    //     login(username, password).then(updateLoginText);
+    // }
 
-    const [authStatus, setAuthStatus] = useState(false);
-    const authEventCallback = params => {setAuthStatus(params)}
 
-
-    function login() {
-        Login(username, password).then(updateLoginText);
-    }
-
-    useEffect(()=>{
-        EventsOn("authStatus", authEventCallback);
-        return () => {EventsOff("authStatus")}
-    },[])
+    // function login() {
+    //     Login(username, password).then(updateLoginText);
+    // }
+    //
+    // useEffect(()=>{
+    //     EventsOn("authStatus", authEventCallback);
+    //     return () => {EventsOff("authStatus")}
+    // },[])
     // END Authorization logic
 
     // Reward cards logic
-    const [rewardCards, setRewardCards] = useState([]);
-    const rewardCardsEventCallback = params => {
-        setRewardCards(params)
-        console.log("Event reward cards")
-        console.log(params)
-    }
-
-    function claimReward() {
-        ClaimReward().then(updateResultText);
-    }
-
-    useEffect(()=>{
-        EventsOn("rewardCards", rewardCardsEventCallback);
-        return () => {EventsOff("rewardCards")}
-    },[])
+    // const [rewardCards, setRewardCards] = useState([]);
+    // const rewardCardsEventCallback = params => {
+    //     setRewardCards(params)
+    //     console.log("Event reward cards")
+    //     console.log(params)
+    // }
+    //
+    // useEffect(()=>{
+    //     EventsOn("rewardCards", rewardCardsEventCallback);
+    //     return () => {EventsOff("rewardCards")}
+    // },[])
     // END Reward cards logic
 
-    function boostClub() {
-        BoostClub().then(updateResultText);
-    }
+    // function claimReward() {
+    //     ClaimReward().then();
+    // }
+
+    const [activeBlock, setActiveBlock] = useState(1);
+
+
 
     return (
         <>
-            { !authStatus &&
-                <>
-                    <div className="overlay"></div>
-                    <div className="login-form">
-                        <div>
-                            <input type="text" name="u" placeholder="Username" required="required"
-                                   onChange={updateUserName}/>
-                            <input type="password" name="p" placeholder="Password" required="required"
-                                   onChange={updatePassword}/>
-                            <button type="submit" className="btn btn-primary btn-block btn-large" onClick={login}>Let
-                                me in.
-                            </button>
-                        </div>
-                    </div>
-                </>
-            }
+            <Authorization/>
             { authStatus &&
                 <>
-                    <div id="left-sidebar">
+                    <div id = "left-sidebar" >
                         {/*<div className="user-info">User Info</div>*/}
                         <ul>
-                            <li className="cards"><a href="#">Cards</a></li>
-                            <li className="reward-cards"><a href="#">Reward Cards</a></li>
-                            <li className="boost-club"><a href="#">Boost Club</a></li>
+                            <li className="cards" onClick={() => setActiveBlock(1)}><a href="#">Cards</a></li>
+                            <li className="reward-cards" onClick={() => setActiveBlock(2)}><a href="#">Reward Cards</a></li>
+                            <li className="boost-club" onClick={() => setActiveBlock(3)}><a href="#">Boost Club</a></li>
                         </ul>
                     </div>
                     <div id="content-wrapper">
-                        <div id="result" className="result">{resultText}</div>
-                        <div id="input" className="input-box">
-                            <input id="name" className="input" onChange={updateName} autoComplete="off" name="input"
-                                   type="text"/>
-                            <button className="btn" onClick={claimReward}>Get Reward Cards</button>
-                            <button className="btn" onClick={boostClub}>Boost Club</button>
-                        </div>
+                        {
+                            activeBlock === 1 &&
+                            <AllCards/>
+                        }
+                        {
+                            activeBlock === 2 &&
+                            <RewardCards/>
+                        }
+                        {
+                            activeBlock === 3 &&
+                            <Club/>
+                        }
+
                     </div>
                 </>
             }

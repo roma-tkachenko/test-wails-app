@@ -1,15 +1,17 @@
 module test-app
 
-go 1.22
+go 1.23
 
-toolchain go1.22.2
+toolchain go1.23.4
 
 require (
+	github.com/PuerkitoBio/goquery v1.10.1
 	github.com/quic-go/quic-go v0.48.2
 	github.com/wailsapp/wails/v2 v2.9.2
 )
 
 require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bep/debounce v1.2.1 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect

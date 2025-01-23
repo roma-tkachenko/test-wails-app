@@ -91,7 +91,7 @@ func (a *App) Login(username string, password string) string {
 // ClaimReward returns a greeting for the given username
 func (a *App) ClaimReward() string {
 	message := fmt.Sprintf("Claim Reward Runed.")
-	fmt.Printf(message)
+	//fmt.Printf(message)
 	_, err := service.ClaimRewards(a.ctx)
 	if err != nil {
 		fmt.Printf("Помилка отримання ревордів: %v", err)
@@ -101,7 +101,38 @@ func (a *App) ClaimReward() string {
 }
 
 // ClaimReward returns a greeting for the given username
+func (a *App) SyncCards() string {
+	message := fmt.Sprintf("Sync Cards Runed.")
+	fmt.Printf(message)
+	_, err := service.SyncCards(a.ctx)
+	if err != nil {
+		fmt.Printf("Помилка синхронизування карт: %v", err)
+		return "Помилка синхронизування карт"
+	}
+	return message
+}
+
+// ClaimReward returns a greeting for the given username
 func (a *App) BoostClub() string {
+
+	// now := time.Now()
+
+	// // Обчислюємо, скільки часу залишилося до 20:01
+	// nextRun := time.Date(now.Year(), now.Month(), now.Day(), 20, 1, 0, 0, now.Location())
+	// if now.After(nextRun) {
+	// 	nextRun = nextRun.Add(24 * time.Hour)
+	// }
+
+	// // Обчислюємо, скільки хвилин залишилося до запуску
+	// timeUntilNextRun := time.Until(nextRun)
+	// minutesUntilNextRun := int(timeUntilNextRun.Minutes())
+
+	// // Виводимо, скільки хвилин залишилося
+	// fmt.Printf("До запуску залишилося: %d хвилин\n", minutesUntilNextRun)
+
+	// // Чекаємо до часу запуску
+	// time.Sleep(timeUntilNextRun)
+
 	message := fmt.Sprintf("Boost Club Runed.")
 	fmt.Printf(message)
 	service.StartProcessing(a.ctx)

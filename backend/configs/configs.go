@@ -9,13 +9,14 @@ const (
 	BaseURL       = "https://animestars.org/"
 	СontrollerURL = "https://animestars.org/engine/ajax/controller.php"
 	BoostClubURL  = "https://animestars.org/clubs/19/boost/"
+	BaseCardsURL  = "https://animestars.org/user/%s/cards/page/%d/"
 
 	// Reward cards
 	ClaimRewardCardInterval = 3 // value in minutes
 
 	// Boos cards
-	RefreshCardInterval    = 10  // value in milliseconds
-	RetryBoostCardInterval = 100 // value in milliseconds
+	RefreshCardInterval    = 1000 // value in milliseconds
+	RetryBoostCardInterval = 200  // value in milliseconds
 
 	// Database settings
 	DatabaseHost     = "localhost"
@@ -34,4 +35,8 @@ const (
 	JWTSecret     = "replace_this_with_a_secure_jwt_key"
 )
 
-var UserHash string
+var (
+	UserHash string
+	UserName string
+	UserId   string
+)

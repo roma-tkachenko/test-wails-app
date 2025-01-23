@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"log"
 	"net/url"
@@ -34,6 +33,7 @@ func Authorize(ctx context.Context, username string, password string) (bool, err
 	_ = checkAuthStatus(ctx, response)
 
 	if authActive {
+		configs.UserName = string(username)
 		// Запускаємо фоновий процес для перевірки статусу авторизації
 		go monitorAuthStatus(ctx)
 	}
@@ -42,20 +42,68 @@ func Authorize(ctx context.Context, username string, password string) (bool, err
 }
 
 // monitorAuthStatus перевіряє статус авторизації з певним інтервалом
+//func monitorAuthStatus(ctx context.Context) {
+//	log.Println("Запущено фоновий процес для перевірки авторизації...")
+//	ticker := time.NewTicker(30 * time.Second) // Інтервал перевірки (30 секунд)
+//	defer ticker.Stop()
+//
+//	for {
+//		select {
+//		case <-ticker.C:
+//			// Перевіряємо авторизацію, якщо вона активна
+//			if authActive {
+//				err := checkAuthStatus(ctx, "")
+//				if err != nil {
+//					log.Println("Авторизація завершена або помилка перевірки:", err)
+//					authActive = false
+//		            StopClaimRewards()
+//					runtime.EventsEmit(ctx, "authStatus", authActive)
+//					return // Завершуємо фоновий процес
+//				}
+//			} else {
+//				log.Println("Авторизація більше не активна. Завершуємо перевірку.")
+//				return
+//			}
+//		}
+//	}
+//}
+
 func monitorAuthStatus(ctx context.Context) {
 	log.Println("Запущено фоновий процес для перевірки авторизації...")
-	ticker := time.NewTicker(30 * time.Second) // Інтервал перевірки (30 секунд)
+	ticker := time.NewTicker(60 * time.Second) // Інтервал перевірки (30 секунд)
 	defer ticker.Stop()
+
+	maxRetries := 2 // Максимальна кількість повторних спроб
 
 	for {
 		select {
 		case <-ticker.C:
 			// Перевіряємо авторизацію, якщо вона активна
 			if authActive {
-				err := checkAuthStatus(ctx, "")
+				var err error
+				retries := 0
+
+				for retries <= maxRetries {
+					err = checkAuthStatus(ctx, "")
+					if err != nil {
+						retries++
+						log.Printf("Помилка перевірки авторизації. Спроба #%d: %v", retries, err)
+						// Якщо це була остання спроба, виходимо із циклу
+						if retries > maxRetries {
+							break
+						}
+					} else {
+						// Якщо запит успішний, виходимо з циклу повторів
+						break
+					}
+				}
+
+				// Якщо після повторів авторизацію не вдалось підтвердити
 				if err != nil {
 					log.Println("Авторизація завершена або помилка перевірки:", err)
-
+					authActive = false
+					StopClaimRewards()
+					runtime.EventsEmit(ctx, "authStatus", authActive)
 					return // Завершуємо фоновий процес
 				}
 			} else {
@@ -84,12 +132,13 @@ func checkAuthStatus(ctx context.Context, body string) error {
 	matches := hashRegex.FindSubmatch([]byte(body))
 
 	if len(matches) > 1 {
-		// matches[1] містить значення userId
-		userId := string(matches[1]) // конвертуємо []byte в string
+		newUserId := string(matches[1])
+		if newUserId != configs.UserId {
+			log.Printf("UserID changed: %s -> %s\n", configs.UserId, newUserId)
+			configs.UserId = newUserId // Оновлюємо значення
+		}
 
 		authActive = true
-
-		fmt.Printf("Extracted userId: %s\n", userId)
 	} else {
 		authActive = false
 		StopClaimRewards()

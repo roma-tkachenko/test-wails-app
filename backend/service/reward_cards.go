@@ -8,33 +8,12 @@ import (
 	"log"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"test-app/backend/api"
 	"test-app/backend/configs"
 	"time"
 )
-
-type RewardCards struct {
-	Cards       Card   `json:"cards"`
-	IfReward    string `json:"if_reward"`
-	RewardLimit int    `json:"reward_limit"`
-	StopReward  string `json:"stop_reward"`
-}
-
-type Card struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Author    string `json:"author"`
-	NewsID    string `json:"news_id"`
-	Rank      string `json:"rank"`
-	Image     string `json:"image"`
-	Source    string `json:"source"`
-	Approve   string `json:"approve"`
-	Reward    string `json:"reward"`
-	Comment   string `json:"comment"`
-	NewAuthor string `json:"new_author"`
-	OwnerID   int    `json:"owner_id"`
-}
 
 var (
 	rewardCards   []Card // Масив для збереження отриманих карт
@@ -65,39 +44,34 @@ func monitorClaimRewards(ctx context.Context) {
 	ticker := time.NewTicker(configs.ClaimRewardCardInterval * time.Minute) // Інтервал перевірки (30 секунд)
 	defer ticker.Stop()
 
-	var iterations int // Кількість ітерацій, визначена сервером
+	var iterations int
 
-	// Перший запит одразу після запуску
 	rewardLimit, err := fetchRewardCards(ctx)
 	if err != nil {
 		log.Printf("Помилка при отриманні карт винагород: %v", err)
-		claimActive = false
 		runtime.EventsEmit(ctx, "rewardError", err.Error())
-		close(stopMonitorCh) // Зупиняємо процес
+		StopClaimRewards()
 		return
 	}
 
-	// Встановлюємо кількість ітерацій після першого запиту
 	iterations = rewardLimit
 
 	for i := 0; i < iterations || iterations == 0; i++ { // Якщо iterations == 0, то потрібно отримати перше значення
 		select {
 		case <-stopMonitorCh:
-			log.Println("Зупинено фоновий процес для отримання карт винагород.")
-			claimActive = false
+			log.Println("Зупинено фоновий процес для отримання карт винагород. 2")
+			StopClaimRewards()
 			return
 		case <-ticker.C:
 			// Виконуємо запит на сервер
 			rewardLimit, err := fetchRewardCards(ctx)
 			if err != nil {
 				log.Printf("Помилка при отриманні карт винагород: %v", err)
-				claimActive = false
 				runtime.EventsEmit(ctx, "rewardError", err.Error())
-				close(stopMonitorCh) // Зупиняємо процес
+				StopClaimRewards() // Зупиняємо процес
 				return
 			}
 
-			// Встановлюємо кількість ітерацій після першого запиту
 			if iterations == 0 {
 				iterations = rewardLimit
 			}
@@ -108,16 +82,12 @@ func monitorClaimRewards(ctx context.Context) {
 	claimActive = false
 }
 
-// fetchRewardCards виконує запит до сервера та повертає reward_limit
 func fetchRewardCards(ctx context.Context) (int, error) {
-	// Формування URL із параметрами
 	urlParams := url.Values{
 		"mod":       {"reward_card"},
 		"action":    {"check_reward"},
 		"user_hash": {configs.UserHash},
 	}
-
-	log.Printf("get cart url : %s\n", configs.СontrollerURL+"?"+urlParams.Encode())
 
 	response, err := api.SendGETRequest(configs.СontrollerURL + "?" + urlParams.Encode())
 	log.Printf("Response CHECK reward: %s\n", response)
@@ -125,7 +95,6 @@ func fetchRewardCards(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	// Парсинг JSON відповіді
 	var data RewardCards
 	err = json.Unmarshal([]byte(response), &data)
 	if err != nil {
@@ -134,24 +103,42 @@ func fetchRewardCards(ctx context.Context) (int, error) {
 
 	if data.StopReward == "yes" {
 		log.Printf("StopReward is value: %d", data.StopReward)
-		close(stopMonitorCh) // Зупиняємо процес
+		StopClaimRewards()
+		return 0, nil
 	}
 
-	// Зберігаємо отримані карти в масив
-	rewardCards = append(rewardCards, data.Cards)
+	// Перевірка вмісту `cards`
+	if string(data.Cards) == `""` {
+		log.Println("Cards is an empty string")
+		StopClaimRewards()
+		return 0, nil
+	}
 
-	if data.Cards.OwnerID != 0 {
+	var card Card
+	err = json.Unmarshal(data.Cards, &card)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unmarshal cards: %w", err)
+	}
+	log.Printf("Parsed card: %+v", card)
+
+	if !isAbsoluteURL(card.Image) {
+		cleanedImagePath := strings.TrimPrefix(card.Image, "/")
+		card.Image = configs.BaseURL + cleanedImagePath
+	}
+
+	rewardCards = append(rewardCards, card)
+
+	if card.OwnerID != 0 {
 		urlParams = url.Values{
 			"mod": {"cards_ajax"},
 		}
 
 		postParams := url.Values{
 			"action":   {"take_card"},
-			"owner_id": {strconv.Itoa(data.Cards.OwnerID)},
+			"owner_id": {strconv.Itoa(card.OwnerID)},
 		}
 
-		log.Printf("OwnerID is not empty: %d", data.Cards.OwnerID)
-		// Виконання HTTP/3 POST-запиту
+		log.Printf("OwnerID is not empty: %d", card.OwnerID)
 		response, err = api.SendPOSTRequest(configs.СontrollerURL+"?"+urlParams.Encode(), postParams)
 		log.Printf("Response GET reward: %s", response)
 		if err != nil {
@@ -159,22 +146,28 @@ func fetchRewardCards(ctx context.Context) (int, error) {
 		}
 	}
 
-	// Тригеримо івент для передачі отриманої карти на фронтенд
-	runtime.EventsEmit(ctx, "rewardCards", data.Cards)
+	runtime.EventsEmit(ctx, "rewardCards", rewardCards)
 
-	fmt.Printf("reward limit: %v", data.RewardLimit)
+	//fmt.Printf("reward limit: %v", data.RewardLimit)
 	return data.RewardLimit, nil
 }
 
-// StopClaimRewards зупиняє фоновий процес отримання винагород
 func StopClaimRewards() {
 	claimMutex.Lock()
 	defer claimMutex.Unlock()
 
 	if claimActive {
-		close(stopMonitorCh)
-		stopMonitorCh = make(chan struct{}) // Оновлюємо канал для наступного запуску
 		claimActive = false
-		log.Println("Фоновий процес отримання карт винагород зупинено.")
+		log.Println("Фоновий процес отримання карт винагород зупинено. 1")
+		close(stopMonitorCh)
+		stopMonitorCh = make(chan struct{})
 	}
+}
+
+func isAbsoluteURL(urlStr string) bool {
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return false
+	}
+	return parsedURL.IsAbs()
 }

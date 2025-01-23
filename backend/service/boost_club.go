@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"log"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync"
 	"test-app/backend/api"
 	"test-app/backend/configs"
@@ -32,27 +35,17 @@ var (
 	action string
 )
 
-func StartProcessing(ctx context.Context) {
-	var wg sync.WaitGroup
-	//var refreshTicker *time.Ticker
-	//var refreshTickerMutex sync.Mutex
-	//
-	//// Функція для перезапуску таймера оновлення карт
-	//resetRefreshTicker := func() {
-	//	refreshTickerMutex.Lock()
-	//	defer refreshTickerMutex.Unlock()
-	//	if refreshTicker != nil {
-	//		refreshTicker.Stop()
-	//	}
-	//	refreshTicker = time.NewTicker(configs.RefreshCardInterval * time.Millisecond)
-	//}
-	//
-	//// Ініціалізуємо таймер оновлення карти
-	//resetRefreshTicker()
+var appContext context.Context
 
-	const interval = time.Second * 10
-	// channel for incoming messages
-	var incomeCh = make(chan struct{})
+func SetAppContext(ctx context.Context) {
+	appContext = ctx
+}
+
+func StartProcessing(ctx context.Context) {
+	SetAppContext(ctx)
+	var wg sync.WaitGroup
+
+	const interval = configs.RefreshCardInterval * time.Millisecond
 
 	// первинний запит на сторінку внесення карт
 	html, err := api.SendGETRequest(configs.BoostClubURL)
@@ -67,6 +60,13 @@ func StartProcessing(ctx context.Context) {
 		log.Printf("Помилка парсингу HTML: %v\n", err)
 		return
 	}
+
+	// channel for incoming messages
+	resetTimerSignal := make(chan bool, 1)
+	defer close(resetTimerSignal)
+
+	// канал для сигналу зупинки циклів
+	stopSignal := make(chan bool, 1)
 
 	// Відкриття каналу для сигналів внесення карти
 	submitSignal := make(chan bool, 1)
@@ -86,7 +86,9 @@ func StartProcessing(ctx context.Context) {
 			case <-ctx.Done():
 				log.Println("Refresh loop stopped")
 				return
-			//case <-refreshTicker.C:
+			case <-stopSignal: // Отримання сигналу для зупинки
+				log.Println("Received stop signal for refresh loop")
+				return
 			case <-time.After(interval):
 				// Робимо запит оновлення карти
 				cardID, action, err = makeServerRequest(cardID, ActionRefresh)
@@ -95,13 +97,13 @@ func StartProcessing(ctx context.Context) {
 					continue
 				}
 
+				log.Printf("Refresh response action: %s", action)
 				if action == ActionSubmit {
 					// Відправлення сигналу на внесення карти
-					log.Printf("Refresh response: %s", action)
 					submitSignal <- true
 				}
-			case <-incomeCh:
-				log.Println("Handle income message and move to the next iteration")
+			case <-resetTimerSignal:
+				log.Println("Handle reset timer income message and move to the next iteration")
 			}
 		}
 	}()
@@ -115,6 +117,9 @@ func StartProcessing(ctx context.Context) {
 			case <-ctx.Done():
 				log.Println("Card submission loop stopped")
 				return
+			case <-stopSignal: // Отримання сигналу для зупинки
+				log.Println("Received stop signal for refresh loop")
+				return
 			case <-submitSignal:
 				log.Println("Submit loop:")
 				for {
@@ -127,13 +132,10 @@ func StartProcessing(ctx context.Context) {
 					}
 
 					// Після успішного виконання запиту на внесення карти скидаємо таймер оновлення карти
-					time.Sleep(15 * time.Second)
-					log.Println("Resetting refresh timer after card submission")
-					// Перезапуск таймера після успішного оновлення
-					incomeCh <- struct{}{}
+					resetTimerSignal <- true
 
 					// Повторюємо запит на внесення карти (умови для повторного внесення карти залежать від відповіді сервера)
-					log.Printf("Submit response: %s", action)
+					log.Printf("Submit response action: %s", action)
 					if action == ActionRetry {
 						action = ActionSubmit
 						// Додаємо очікування перед повторним запитом
@@ -164,6 +166,24 @@ func getCardActionFromHTML(body string) (cardID string, action string, err error
 	// Регулярний вираз для кнопки з класом "club__boost__refresh-btn"
 	refreshBtnRegex := regexp.MustCompile(`<button[^>]*class="[^"]*club__boost__refresh-btn[^"]*"[^>]*data-card-id="([^"]*)"`)
 	refreshMatches := refreshBtnRegex.FindStringSubmatch(body)
+
+	// Регулярний вираз для пошуку тега <img> всередині <div class="club-boost__image">
+	imageRegex := regexp.MustCompile(`<div[^>]*class="[^"]*club-boost__image[^"]*"[^>]*>\s*<img[^>]*src="([^"]*)"`)
+	imageMatches := imageRegex.FindAllStringSubmatch(body, -1)
+
+	// Якщо знайдено результати
+	if len(imageMatches) > 0 {
+		// Перевірка та додавання домену до Image
+		if !isAbsoluteURL(imageMatches[0][1]) {
+			// Видаляємо початковий слеш, якщо він є
+			cleanedImagePath := strings.TrimPrefix(imageMatches[0][1], "/")
+			imgUrl := configs.BaseURL + cleanedImagePath
+
+			runtime.EventsEmit(appContext, "boostImage", imgUrl)
+		}
+	} else {
+		fmt.Println("Картинки не знайдено.")
+	}
 
 	if len(boostMatches) > 1 {
 		// Якщо знайдено кнопку "club__boost-btn"
@@ -219,12 +239,16 @@ func processJsonResponseData(jsonResponseData JsonResponse, cardID string, actio
 	// Обробляємо поле `error`, якщо воно не порожнє
 	if jsonResponseData.Error != "" {
 		log.Printf("Action: %s -> Error from server: %s \n", action, jsonResponseData.Error)
-		switch jsonResponseData.Error {
-		case "Следующую карту можно сдать клубу через -1 секунд":
+
+		// Використання регулярного виразу для перевірки тексту
+		reRetry := regexp.MustCompile(`^Следующую карту можно сдать клубу через -?\d+ секунд$`)
+
+		switch {
+		case reRetry.MatchString(jsonResponseData.Error):
 			return cardID, ActionRetry, nil
-		case "Ваша карта заблокирована, для пожертвования клубу разблокируйте её":
+		case jsonResponseData.Error == "Ваша карта заблокирована, для пожертвования клубу разблокируйте её":
 			return cardID, ActionNoAction, nil
-		case "Достигнут дневной лимит пожертвований в клуб, подождите до завтра":
+		case jsonResponseData.Error == "Достигнут дневной лимит пожертвований в клуб, подождите до завтра":
 			return cardID, ActionNoAction, nil
 		default:
 			log.Printf("Unknown Error: %s\n", jsonResponseData.Error)
@@ -266,28 +290,6 @@ func processJsonResponseData(jsonResponseData JsonResponse, cardID string, actio
 
 	log.Printf("Відповідь парсингу HTML: %s -> %s\n", parsedAction, parsedCardID)
 	return parsedCardID, parsedAction, nil
-
-	//// Присвоюємо значення змінній `html` залежно від респонсу
-	//var html string
-	//if jsonResponseData.BoostHTMLChanged != "" {
-	//	html = jsonResponseData.BoostHTMLChanged
-	//	log.Println("Using `boost_html_changed` from response.")
-	//	// отримання ID карти на сторінці та події яку варто виконати
-	//	cardID, action, err = getCardActionFromHTML(html)
-	//} else if jsonResponseData.BoostHTML != "" {
-	//	html = jsonResponseData.BoostHTML
-	//	log.Println("Using `boost_html` from response.")
-	//	// отримання ID карти на сторінці та події яку варто виконати
-	//	cardID, action, err = getCardActionFromHTML(html)
-	//}
-	//
-	//if err != nil {
-	//	log.Printf("Помилка парсингу HTML: %v\n", err)
-	//	return cardID, ActionRefresh, err
-	//}
-	//
-	//log.Printf("Відповідь парсингу HTML: %v -> %s\n", action, cardID)
-	//return cardID, action, nil
 }
 
 func performBoostRequest(cardID string) (string, error) {
